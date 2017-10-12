@@ -118,6 +118,8 @@ class Decoder(srd.Decoder):
         opcode = 0
         op1 = 0
         op2 = 0
+        write_count = 0
+
         while True:
             # TODO: Come up with more appropriate self.wait() conditions.
             pins = self.wait()
@@ -127,10 +129,15 @@ class Decoder(srd.Decoder):
             self.put(self.samplenum, self.samplenum + 1, self.out_ann, [Ann.DATA, [format(bus_data, '02x')]])
 
             # TODO, add warnings if RNW not as expected
+
             if pins[Pin.SYNC] == 1:
 
                 if (last_fetch > 0):
-                    self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, [fmt.format(mnemonic, op1, op2)]])
+                    if write_count == 3 and opcode != 0:
+                        # An interrupt
+                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, ['INT!']])
+                    else:
+                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, [fmt.format(mnemonic, op1, op2)]])
                 last_fetch = self.samplenum
 
                 cycle    = Cycle.FETCH
@@ -141,11 +148,17 @@ class Decoder(srd.Decoder):
                 len      = addr_mode_len_map[mode][0]
                 fmt      = addr_mode_len_map[mode][1]
                 opcount  = len - 1
+                write_count = 0
+
+            elif pins[Pin.RNW] == 0:
+                cycle = Cycle.MEMWR
+                write_count += 1
 
             elif cycle == Cycle.FETCH and opcount > 0:
                 cycle = Cycle.OP1
                 opcount -= 1
                 op1 = bus_data;
+
             elif cycle == Cycle.OP1 and opcount > 0:
                 if (opcode == 0x20): # JSR is <opcode> <op1> <dummp stack rd> <stack wr> <stack wr> <op2>
                     cycle = Cycle.MEMRD
@@ -153,14 +166,13 @@ class Decoder(srd.Decoder):
                     cycle = Cycle.OP2
                     opcount -= 1
                     op2 = bus_data
-            elif pins[Pin.RNW] == 1:
+
+            else:
                 if (opcode == 0x20): # JSR, see above
                     cycle = Cycle.OP2
                     opcount -= 1
                     op2 = bus_data
                 else:
                     cycle = Cycle.MEMRD
-            else:
-                cycle = Cycle.MEMWR
 
             self.put(self.samplenum, self.samplenum + 1, self.out_ann, [cycle_to_ann_map[cycle], [cycle_to_name_map[cycle]]])
