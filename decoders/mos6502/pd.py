@@ -52,6 +52,9 @@ cycle_to_name_map = {
     Cycle.MEMWR: 'Mem Wr',
 }
 
+def signed_byte(byte):
+    return byte if byte < 128 else byte - 256
+
 def reduce_bus(bus):
     if 0xFF in bus:
         return None # unassigned bus channels
@@ -119,6 +122,8 @@ class Decoder(srd.Decoder):
         op1 = 0
         op2 = 0
         write_count = 0
+        pc = -1
+        next_pc = -1
 
         while True:
             # TODO: Come up with more appropriate self.wait() conditions.
@@ -135,9 +140,27 @@ class Decoder(srd.Decoder):
                 if (last_fetch > 0):
                     if write_count == 3 and opcode != 0:
                         # An interrupt
-                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, ['INT!']])
+                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, [format(pc, '04x') + ': ' + 'INT!']])
                     else:
-                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, [fmt.format(mnemonic, op1, op2)]])
+                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, [format(pc, '04x') + ': ' + fmt.format(mnemonic, op1, op2)]])
+
+                # Look for control flow changes and update the PC
+                if opcode == 0x40 or opcode == 0x00 or opcode == 0x6c or opcode == 0x7c or write_count == 3:
+                    # RTI, BRK, INTR, JMP (ind), JMP (ind, X)
+                    pc = (next_pc >> 8) & 0xffff
+                elif opcode == 0x20 or opcode == 0x4c:
+                    # JSR abs, JMP abs
+                    pc = op2 << 8 | op1
+                elif (opcode & 0x1f) == 0x10 and self.samplenum - last_fetch != 2:
+                    # BXX: op1 if taken
+                    pc += signed_byte(op1) + 2
+                elif opcode == 0x60:
+                    # RTS
+                    pc = (next_pc + 1) & 0xffff
+                else:
+                    # Otherwise, increment pc by length of instuction
+                    pc += len
+
                 last_fetch = self.samplenum
 
                 cycle    = Cycle.FETCH
@@ -149,6 +172,7 @@ class Decoder(srd.Decoder):
                 fmt      = addr_mode_len_map[mode][1]
                 opcount  = len - 1
                 write_count = 0
+                next_pc = 0
 
             elif pins[Pin.RNW] == 0:
                 cycle = Cycle.MEMWR
@@ -174,5 +198,6 @@ class Decoder(srd.Decoder):
                     op2 = bus_data
                 else:
                     cycle = Cycle.MEMRD
+                    next_pc = (next_pc >> 8) | (bus_data << 16)
 
             self.put(self.samplenum, self.samplenum + 1, self.out_ann, [cycle_to_ann_map[cycle], [cycle_to_name_map[cycle]]])
