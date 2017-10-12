@@ -31,25 +31,25 @@ class AddrMode:
     IMP, IMPA, BRA, IMM, ZP, ZPX, ZPY, INDX, INDY, IND, ABS, ABSX, ABSY, IND16, IND1X = range(15)
 
 addr_mode_len_map = {
-    AddrMode.IMP:   1,
-    AddrMode.IMPA:  1,
-    AddrMode.BRA:   2,
-    AddrMode.IMM:   2,
-    AddrMode.ZP:    2,
-    AddrMode.ZPX:   2,
-    AddrMode.ZPY:   2,
-    AddrMode.INDX:  2,
-    AddrMode.INDY:  2,
-    AddrMode.IND:   2,
-    AddrMode.ABS:   3,
-    AddrMode.ABSX:  3,
-    AddrMode.ABSY:  3,
-    AddrMode.IND16: 3,
-    AddrMode.IND1X: 3,
+    AddrMode.IMP:   ( 1, '{0}'                     ),
+    AddrMode.IMPA:  ( 1, '{0} A'                   ),
+    AddrMode.BRA:   ( 2, '{0} PC+{1:02X}'          ), # TODO - improve this format
+    AddrMode.IMM:   ( 2, '{0} #{1:02X}'            ),
+    AddrMode.ZP:    ( 2, '{0} {1:02X}'             ),
+    AddrMode.ZPX:   ( 2, '{0} {1:02X},X'           ),
+    AddrMode.ZPY:   ( 2, '{0} {1:02X},Y'           ),
+    AddrMode.INDX:  ( 2, '{0} ({1:02X}, X)'        ),
+    AddrMode.INDY:  ( 2, '{0} ({1:02X}), Y'        ),
+    AddrMode.IND:   ( 2, '{0} ({1:02X})'           ),
+    AddrMode.ABS:   ( 3, '{0} {2:02X}{1:02X}'      ),
+    AddrMode.ABSX:  ( 3, '{0} {2:02X}{1:02X}, X'   ),
+    AddrMode.ABSY:  ( 3, '{0} {2:02X}{1:02X}, Y'   ),
+    AddrMode.IND16: ( 3, '{0} ({2:02X}{1:02X})'    ),
+    AddrMode.IND1X: ( 3, '{0} ({2:02X}{1:02X}, X)' ),
 }
 
 instr_table = {
-    0x00: ( 'BRK', AddrMode.IMP  ),
+    0x00: ( 'BRK', AddrMode.IMM  ),
     0x01: ( 'ORA', AddrMode.INDX ),
     0x02: ( '???', AddrMode.IMP  ),
     0x03: ( '???', AddrMode.IMP  ),
