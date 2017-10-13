@@ -23,7 +23,7 @@ from .tables import addr_mode_len_map, instr_table, AddrMode
 import string
 
 class Ann:
-    DATA, FETCH, OP1, OP2, MEMRD, MEMWR, INSTR, ADDR = range(8)
+    DATA, FETCH, OP1, OP2, MEMRD, MEMWR, INSTR, INTR, ADDR = range(9)
 
 class Row:
     DATABUS, INSTRUCTIONS, ADDRESS = range(3)
@@ -99,11 +99,12 @@ class Decoder(srd.Decoder):
         ('memrd',  'Memory Read'),
         ('memwr',  'Memory Write'),
         ('instr',  'Instruction'),
+        ('intr',  'Interrupt'),
     )
     annotation_rows = (
         ('databus', 'Data bus', (Ann.DATA,)),
         ('cycle', 'Cycle', (Ann.FETCH, Ann.OP1, Ann.OP2, Ann.MEMRD, Ann.MEMWR)),
-        ('instructions', 'Instructions', (Ann.INSTR,)),
+        ('instructions', 'Instructions', (Ann.INSTR, Ann.INTR)),
 #        ('addrbus', 'Address bus', (Ann.ADDR,)),
     )
 
@@ -139,10 +140,13 @@ class Decoder(srd.Decoder):
 
                 if (last_fetch > 0):
                     if write_count == 3 and opcode != 0:
-                        # An interrupt
-                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, [format(pc, '04X') + ': ' + 'INTERRUPT !!']])
+                        # Annotate an interrupt
+                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INTR, [format(pc, '04X') + ': ' + 'INTERRUPT !!']])
                     else:
-                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, [format(pc, '04X') + ': ' + fmt.format(mnemonic, op1, op2, pc + signed_byte(op1) + 2)]])
+                        # Calculate branch target using op1 for normal branches and op2 for BBR/BBS
+                        target = pc + signed_byte(op2 if (opcode & 0x0f == 0x0f) else op1) + 2
+                        # Annotate a normal instruction
+                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, [format(pc, '04X') + ': ' + fmt.format(mnemonic, op1, op2, target)]])
 
                 # Look for control flow changes and update the PC
                 if opcode == 0x40 or opcode == 0x00 or opcode == 0x6c or opcode == 0x7c or write_count == 3:
@@ -151,6 +155,12 @@ class Decoder(srd.Decoder):
                 elif opcode == 0x20 or opcode == 0x4c:
                     # JSR abs, JMP abs
                     pc = op2 << 8 | op1
+                elif opcode == 0x80:
+                    # BRA
+                    pc += signed_byte(op1) + 2
+                elif (opcode & 0x0f) == 0x0f and self.samplenum - last_fetch != 2:
+                    # BBR/BBS
+                    pc += signed_byte(op2) + 2
                 elif (opcode & 0x1f) == 0x10 and self.samplenum - last_fetch != 2:
                     # BXX: op1 if taken
                     pc += signed_byte(op1) + 2
