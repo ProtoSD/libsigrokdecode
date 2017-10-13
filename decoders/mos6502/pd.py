@@ -48,8 +48,8 @@ cycle_to_name_map = {
     Cycle.FETCH: 'Fetch',
     Cycle.OP1:   'Op1',
     Cycle.OP2:   'Op2',
-    Cycle.MEMRD: 'Mem Rd',
-    Cycle.MEMWR: 'Mem Wr',
+    Cycle.MEMRD: 'Read',
+    Cycle.MEMWR: 'Write',
 }
 
 def signed_byte(byte):
@@ -140,9 +140,9 @@ class Decoder(srd.Decoder):
                 if (last_fetch > 0):
                     if write_count == 3 and opcode != 0:
                         # An interrupt
-                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, [format(pc, '04X') + ': ' + 'INT!']])
+                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, [format(pc, '04X') + ': ' + 'INTERRUPT !!']])
                     else:
-                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, [format(pc, '04X') + ': ' + fmt.format(mnemonic, op1, op2)]])
+                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, [format(pc, '04X') + ': ' + fmt.format(mnemonic, op1, op2, pc + signed_byte(op1) + 2)]])
 
                 # Look for control flow changes and update the PC
                 if opcode == 0x40 or opcode == 0x00 or opcode == 0x6c or opcode == 0x7c or write_count == 3:

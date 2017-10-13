@@ -33,7 +33,7 @@ class AddrMode:
 addr_mode_len_map = {
     AddrMode.IMP:   ( 1, '{0}'                     ),
     AddrMode.IMPA:  ( 1, '{0} A'                   ),
-    AddrMode.BRA:   ( 2, '{0} PC+{1:02X}'          ), # TODO - improve this format
+    AddrMode.BRA:   ( 2, '{0} {3:04X}   '          ),
     AddrMode.IMM:   ( 2, '{0} #{1:02X}'            ),
     AddrMode.ZP:    ( 2, '{0} {1:02X}'             ),
     AddrMode.ZPX:   ( 2, '{0} {1:02X},X'           ),
