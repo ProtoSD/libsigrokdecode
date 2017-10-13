@@ -30,7 +30,7 @@ class Row:
 
 class Pin:
     D0, D7 = 0, 7
-    RNW, SYNC, RDYN, IRQN, NMIN, RSTN, PHI2 = range(8, 15)
+    RNW, SYNC, RDY, IRQN, NMIN, RSTN, PHI2 = range(8, 15)
     A0, A15 = 15, 30
 
 class Cycle:
@@ -80,7 +80,7 @@ class Decoder(srd.Decoder):
         {'id': 'sync', 'name': 'SYNC', 'desc': 'Sync - opcode fetch'},
     )
     optional_channels = (
-#        {'id': 'rdy',  'name': 'RDY',  'desc': 'Ready, allows for wait states'},
+         {'id': 'rdy',  'name': 'RDY',  'desc': 'Ready, allows for wait states'},
 #        {'id': 'irq',  'name': 'IRQN', 'desc': 'Maskable interrupt'},
 #        {'id': 'nmi',  'name': 'NMIN', 'desc': 'Non-maskable interrupt'},
 #        {'id': 'rst',  'name': 'RSTN', 'desc': 'Reset'},
@@ -115,16 +115,16 @@ class Decoder(srd.Decoder):
         self.ann_data   = None
 
     def decode(self):
-        last_fetch = -1
-        opcount = 0
-        cycle = Cycle.MEMRD
-        mnemonic = '???'
-        opcode = 0
-        op1 = 0
-        op2 = 0
+        last_fetch  = -1
+        opcount     = 0
+        cycle       = Cycle.MEMRD
+        mnemonic    = '???'
+        opcode      = -1
+        op1         = 0
+        op2         = 0
         write_count = 0
-        pc = -1
-        next_pc = -1
+        pc          = -1
+        next_pc     = 0
 
         while True:
             # TODO: Come up with more appropriate self.wait() conditions.
@@ -134,19 +134,30 @@ class Decoder(srd.Decoder):
             #print('bus data = ' + str(bus_data))
             self.put(self.samplenum, self.samplenum + 1, self.out_ann, [Ann.DATA, [format(bus_data, '02X')]])
 
-            # TODO, add warnings if RNW not as expected
+            # Ignore the cycle if RDY is low
+            if pins[Pin.RDY] == 0:
+                continue
 
+            # Sync indicates the start of a new instruction
             if pins[Pin.SYNC] == 1:
 
                 if (last_fetch > 0):
+                    pcs = '????' if pc < 0 else format(pc, '04X')
                     if write_count == 3 and opcode != 0:
                         # Annotate an interrupt
-                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INTR, [format(pc, '04X') + ': ' + 'INTERRUPT !!']])
+                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INTR, [pcs + ': ' + 'INTERRUPT !!']])
                     else:
                         # Calculate branch target using op1 for normal branches and op2 for BBR/BBS
-                        target = pc + signed_byte(op2 if (opcode & 0x0f == 0x0f) else op1) + 2
+                        offset = signed_byte(op2 if (opcode & 0x0f == 0x0f) else op1)
+                        if pc < 0:
+                            if offset < 0:
+                                target = 'pc-' + str(-offset)
+                            else:
+                                target = 'pc+' + str(offset)
+                        else:
+                            target = format(pc + 2 + offset, '04X')
                         # Annotate a normal instruction
-                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, [format(pc, '04X') + ': ' + fmt.format(mnemonic, op1, op2, target)]])
+                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, [pcs + ': ' + fmt.format(mnemonic, op1, op2, target)]])
 
                 # Look for control flow changes and update the PC
                 if opcode == 0x40 or opcode == 0x00 or opcode == 0x6c or opcode == 0x7c or write_count == 3:
@@ -155,6 +166,12 @@ class Decoder(srd.Decoder):
                 elif opcode == 0x20 or opcode == 0x4c:
                     # JSR abs, JMP abs
                     pc = op2 << 8 | op1
+                elif opcode == 0x60:
+                    # RTS
+                    pc = (next_pc + 1) & 0xffff
+                elif pc < 0:
+                    # PC value is not known yet, everything below this point is relative
+                    pc = -1
                 elif opcode == 0x80:
                     # BRA
                     pc += signed_byte(op1) + 2
@@ -164,9 +181,6 @@ class Decoder(srd.Decoder):
                 elif (opcode & 0x1f) == 0x10 and self.samplenum - last_fetch != 2:
                     # BXX: op1 if taken
                     pc += signed_byte(op1) + 2
-                elif opcode == 0x60:
-                    # RTS
-                    pc = (next_pc + 1) & 0xffff
                 else:
                     # Otherwise, increment pc by length of instuction
                     pc += len

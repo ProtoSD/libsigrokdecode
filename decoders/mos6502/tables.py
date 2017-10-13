@@ -33,7 +33,7 @@ class AddrMode:
 addr_mode_len_map = {
     AddrMode.IMP:   ( 1, '{0}'                     ),
     AddrMode.IMPA:  ( 1, '{0} A'                   ),
-    AddrMode.BRA:   ( 2, '{0} {3:04X}'             ),
+    AddrMode.BRA:   ( 2, '{0} {3}'                 ),
     AddrMode.IMM:   ( 2, '{0} #{1:02X}'            ),
     AddrMode.ZP:    ( 2, '{0} {1:02X}'             ),
     AddrMode.ZPX:   ( 2, '{0} {1:02X},X'           ),
@@ -46,7 +46,7 @@ addr_mode_len_map = {
     AddrMode.ABSY:  ( 3, '{0} {2:02X}{1:02X},Y'    ),
     AddrMode.IND16: ( 3, '{0} ({2:02X}{1:02X})'    ),
     AddrMode.IND1X: ( 3, '{0} ({2:02X}{1:02X},X)'  ),
-    AddrMode.ZPR:   ( 3, '{0} {1:02X},{3:04X}'     ),
+    AddrMode.ZPR:   ( 3, '{0} {1:02X},{3}'         ),
 }
 
 instr_table = {
