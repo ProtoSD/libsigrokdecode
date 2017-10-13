@@ -30,7 +30,7 @@ class Row:
 
 class Pin:
     D0, D7 = 0, 7
-    RNW, SYNC, RDY, IRQN, NMIN, RSTN, PHI2 = range(8, 15)
+    RNW, SYNC, RDY, PHI2, IRQN, NMIN, RSTN = range(8, 15)
     A0, A15 = 15, 30
 
 class Cycle:
@@ -81,10 +81,10 @@ class Decoder(srd.Decoder):
     )
     optional_channels = (
          {'id': 'rdy',  'name': 'RDY',  'desc': 'Ready, allows for wait states'},
+         {'id': 'phi2', 'name': 'PHI2', 'desc': 'Phi2 clock, falling edge active'},
 #        {'id': 'irq',  'name': 'IRQN', 'desc': 'Maskable interrupt'},
 #        {'id': 'nmi',  'name': 'NMIN', 'desc': 'Non-maskable interrupt'},
 #        {'id': 'rst',  'name': 'RSTN', 'desc': 'Reset'},
-#        {'id': 'phi2', 'name': 'PHI2', 'desc': 'Phi2 clock, falling edge active'},
 #    ) + tuple({
 #        'id': 'a%d' % i,
 #        'name': 'A%d' % i,
@@ -115,7 +115,10 @@ class Decoder(srd.Decoder):
         self.ann_data   = None
 
     def decode(self):
-        last_fetch  = -1
+        cyclenum             = 0
+        last_sync_cyclenum   = 0
+        last_sync_samplenum  = -1
+        last_cycle_samplenum = -1
         opcount     = 0
         cycle       = Cycle.MEMRD
         mnemonic    = '???'
@@ -125,27 +128,57 @@ class Decoder(srd.Decoder):
         write_count = 0
         pc          = -1
         next_pc     = 0
+        last_phi2   = None
+        bus_data    = 0
 
         while True:
             # TODO: Come up with more appropriate self.wait() conditions.
             pins = self.wait()
 
-            bus_data = reduce_bus(pins[Pin.D0:Pin.D7+1])
+            # Phi2 is optional
+            # - if asynchronous capture is used, it must be connected
+            # - if synchronous capture is used, it must not connected
+            pin_phi2 = pins[Pin.PHI2]
+            if pin_phi2 in (0, 1):
+                # If Phi2 is present, look for the falling edge, and proceed with the previous sample
+                if pin_phi2 == 1 or last_phi2 != 1:
+                    last_phi2 = pin_phi2
+                    pin_rdy   = pins[Pin.RDY]
+                    pin_sync  = pins[Pin.SYNC]
+                    pin_rnw   = pins[Pin.RNW]
+                    continue
+            else:
+                # If Phi2 is not present, use the pins directly
+                pin_rdy   = pins[Pin.RDY]
+                pin_sync  = pins[Pin.SYNC]
+                pin_rnw   = pins[Pin.RNW]
+
+            # Sample data just after the falling edge, as there should be reasonable hold time
+            pin_data  = pins[Pin.D0:Pin.D7+1]
+
+            # At this point, either phi2 is not connected, or last_phi2 = 1 and phi2 = 0 (i.e. falling edge)
+            last_phi2 = 0
+
+            # Output the per-cycle annotations for the last cycle
+            self.put(last_cycle_samplenum, self.samplenum, self.out_ann, [cycle_to_ann_map[cycle], [cycle_to_name_map[cycle]]])
+            self.put(last_cycle_samplenum, self.samplenum, self.out_ann, [Ann.DATA, [format(bus_data, '02X')]])
+
+            # Calculate the next data bus value
+            bus_data = reduce_bus(pin_data)
             #print('bus data = ' + str(bus_data))
-            self.put(self.samplenum, self.samplenum + 1, self.out_ann, [Ann.DATA, [format(bus_data, '02X')]])
 
             # Ignore the cycle if RDY is low
-            if pins[Pin.RDY] == 0:
+            if pin_rdy == 0:
                 continue
 
             # Sync indicates the start of a new instruction
-            if pins[Pin.SYNC] == 1:
+            if pin_sync == 1:
 
-                if (last_fetch > 0):
+                if (last_sync_samplenum > 0):
                     pcs = '????' if pc < 0 else format(pc, '04X')
                     if write_count == 3 and opcode != 0:
                         # Annotate an interrupt
-                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INTR, [pcs + ': ' + 'INTERRUPT !!']])
+                        self.put(last_sync_samplenum, self.samplenum, self.out_ann, [Ann.INTR, [pcs + ': ' + 'INTERRUPT !!']])
                     else:
                         # Calculate branch target using op1 for normal branches and op2 for BBR/BBS
                         offset = signed_byte(op2 if (opcode & 0x0f == 0x0f) else op1)
@@ -157,7 +190,7 @@ class Decoder(srd.Decoder):
                         else:
                             target = format(pc + 2 + offset, '04X')
                         # Annotate a normal instruction
-                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, [pcs + ': ' + fmt.format(mnemonic, op1, op2, target)]])
+                        self.put(last_sync_samplenum, self.samplenum, self.out_ann, [Ann.INSTR, [pcs + ': ' + fmt.format(mnemonic, op1, op2, target)]])
 
                 # Look for control flow changes and update the PC
                 if opcode == 0x40 or opcode == 0x00 or opcode == 0x6c or opcode == 0x7c or write_count == 3:
@@ -175,17 +208,18 @@ class Decoder(srd.Decoder):
                 elif opcode == 0x80:
                     # BRA
                     pc += signed_byte(op1) + 2
-                elif (opcode & 0x0f) == 0x0f and self.samplenum - last_fetch != 2:
+                elif (opcode & 0x0f) == 0x0f and cyclenum - last_sync_cyclenum != 2:
                     # BBR/BBS
                     pc += signed_byte(op2) + 2
-                elif (opcode & 0x1f) == 0x10 and self.samplenum - last_fetch != 2:
+                elif (opcode & 0x1f) == 0x10 and cyclenum - last_sync_cyclenum != 2:
                     # BXX: op1 if taken
                     pc += signed_byte(op1) + 2
                 else:
                     # Otherwise, increment pc by length of instuction
                     pc += len
 
-                last_fetch = self.samplenum
+                last_sync_samplenum = self.samplenum
+                last_sync_cyclenum  = cyclenum
 
                 cycle    = Cycle.FETCH
                 opcode   = bus_data
@@ -198,7 +232,7 @@ class Decoder(srd.Decoder):
                 write_count = 0
                 next_pc = 0
 
-            elif pins[Pin.RNW] == 0:
+            elif pin_rnw == 0:
                 cycle = Cycle.MEMWR
                 write_count += 1
 
@@ -224,4 +258,5 @@ class Decoder(srd.Decoder):
                     cycle = Cycle.MEMRD
                     next_pc = (next_pc >> 8) | (bus_data << 16)
 
-            self.put(self.samplenum, self.samplenum + 1, self.out_ann, [cycle_to_ann_map[cycle], [cycle_to_name_map[cycle]]])
+            last_cycle_samplenum = self.samplenum
+            cyclenum += 1
