@@ -131,7 +131,7 @@ class Decoder(srd.Decoder):
 
             bus_data = reduce_bus(pins[Pin.D0:Pin.D7+1])
             #print('bus data = ' + str(bus_data))
-            self.put(self.samplenum, self.samplenum + 1, self.out_ann, [Ann.DATA, [format(bus_data, '02x')]])
+            self.put(self.samplenum, self.samplenum + 1, self.out_ann, [Ann.DATA, [format(bus_data, '02X')]])
 
             # TODO, add warnings if RNW not as expected
 
@@ -140,9 +140,9 @@ class Decoder(srd.Decoder):
                 if (last_fetch > 0):
                     if write_count == 3 and opcode != 0:
                         # An interrupt
-                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, [format(pc, '04x') + ': ' + 'INT!']])
+                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, [format(pc, '04X') + ': ' + 'INT!']])
                     else:
-                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, [format(pc, '04x') + ': ' + fmt.format(mnemonic, op1, op2)]])
+                        self.put(last_fetch, self.samplenum, self.out_ann, [Ann.INSTR, [format(pc, '04X') + ': ' + fmt.format(mnemonic, op1, op2)]])
 
                 # Look for control flow changes and update the PC
                 if opcode == 0x40 or opcode == 0x00 or opcode == 0x6c or opcode == 0x7c or write_count == 3:
