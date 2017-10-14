@@ -159,10 +159,6 @@ class Decoder(srd.Decoder):
             # At this point, either phi2 is not connected, or last_phi2 = 1 and phi2 = 0 (i.e. falling edge)
             last_phi2 = 0
 
-            # Output the per-cycle annotations for the last cycle
-            self.put(last_cycle_samplenum, self.samplenum, self.out_ann, [cycle_to_ann_map[cycle], [cycle_to_name_map[cycle]]])
-            self.put(last_cycle_samplenum, self.samplenum, self.out_ann, [Ann.DATA, [format(bus_data, '02X')]])
-
             # Calculate the next data bus value
             bus_data = reduce_bus(pin_data)
             #print('bus data = ' + str(bus_data))
@@ -178,7 +174,7 @@ class Decoder(srd.Decoder):
                     pcs = '????' if pc < 0 else format(pc, '04X')
                     if write_count == 3 and opcode != 0:
                         # Annotate an interrupt
-                        self.put(last_sync_samplenum, self.samplenum, self.out_ann, [Ann.INTR, [pcs + ': ' + 'INTERRUPT !!']])
+                        self.put(last_sync_samplenum, last_cycle_samplenum, self.out_ann, [Ann.INTR, [pcs + ': ' + 'INTERRUPT !!']])
                     else:
                         # Calculate branch target using op1 for normal branches and op2 for BBR/BBS
                         offset = signed_byte(op2 if (opcode & 0x0f == 0x0f) else op1)
@@ -190,7 +186,7 @@ class Decoder(srd.Decoder):
                         else:
                             target = format(pc + 2 + offset, '04X')
                         # Annotate a normal instruction
-                        self.put(last_sync_samplenum, self.samplenum, self.out_ann, [Ann.INSTR, [pcs + ': ' + fmt.format(mnemonic, op1, op2, target)]])
+                        self.put(last_sync_samplenum, last_cycle_samplenum, self.out_ann, [Ann.INSTR, [pcs + ': ' + fmt.format(mnemonic, op1, op2, target)]])
 
                 # Look for control flow changes and update the PC
                 if opcode == 0x40 or opcode == 0x00 or opcode == 0x6c or opcode == 0x7c or write_count == 3:
@@ -218,7 +214,7 @@ class Decoder(srd.Decoder):
                     # Otherwise, increment pc by length of instuction
                     pc += len
 
-                last_sync_samplenum = self.samplenum
+                last_sync_samplenum = last_cycle_samplenum
                 last_sync_cyclenum  = cyclenum
 
                 cycle    = Cycle.FETCH
@@ -258,5 +254,17 @@ class Decoder(srd.Decoder):
                     cycle = Cycle.MEMRD
                     next_pc = (next_pc >> 8) | (bus_data << 16)
 
-            last_cycle_samplenum = self.samplenum
+            # Increment the cycle number (used only to detect taken branches)
             cyclenum += 1
+
+            # In synchronus sampling, the alignment looks better with an offset of 1 cycle
+            if pin_phi2 != 0:
+                now = self.samplenum + 1
+            else:
+                now = self.samplenum
+
+            # Output the per-cycle annotations for the last cycle
+            self.put(last_cycle_samplenum, now, self.out_ann, [cycle_to_ann_map[cycle], [cycle_to_name_map[cycle]]])
+            self.put(last_cycle_samplenum, now, self.out_ann, [Ann.DATA, [format(bus_data, '02X')]])
+
+            last_cycle_samplenum = now
