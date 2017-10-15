@@ -131,6 +131,7 @@ class Decoder(srd.Decoder):
         write_accumulator    = 0
         last_phi2            = None
         bus_data             = 0
+        fmt                  = 'xxx'
 
         while True:
             # TODO: Come up with more appropriate self.wait() conditions.
@@ -187,23 +188,22 @@ class Decoder(srd.Decoder):
                         print('pc: prediction failed at ' + format(newpc, '04X') + ' old pc was ' + format(pc, '04X'))
                     pc = newpc
 
-                if (last_sync_samplenum > 0):
-                    pcs = '????' if pc < 0 else format(pc, '04X')
-                    if write_count == 3 and opcode != 0:
-                        # Annotate an interrupt
-                        self.put(last_sync_samplenum, last_cycle_samplenum, self.out_ann, [Ann.INTR, [pcs + ': ' + 'INTERRUPT !!']])
-                    else:
-                        # Calculate branch target using op1 for normal branches and op2 for BBR/BBS
-                        offset = signed_byte(op2 if (opcode & 0x0f == 0x0f) else op1)
-                        if pc < 0:
-                            if offset < 0:
-                                target = 'pc-' + str(-offset)
-                            else:
-                                target = 'pc+' + str(offset)
+                pcs = '????' if pc < 0 else format(pc, '04X')
+                if write_count == 3 and opcode != 0:
+                    # Annotate an interrupt
+                    self.put(last_sync_samplenum, last_cycle_samplenum, self.out_ann, [Ann.INTR, [pcs + ': ' + 'INTERRUPT !!']])
+                else:
+                    # Calculate branch target using op1 for normal branches and op2 for BBR/BBS
+                    offset = signed_byte(op2 if (opcode & 0x0f == 0x0f) else op1)
+                    if pc < 0:
+                        if offset < 0:
+                            target = 'pc-' + str(-offset)
                         else:
-                            target = format(pc + 2 + offset, '04X')
-                        # Annotate a normal instruction
-                        self.put(last_sync_samplenum, last_cycle_samplenum, self.out_ann, [Ann.INSTR, [pcs + ': ' + fmt.format(mnemonic, op1, op2, target)]])
+                            target = 'pc+' + str(offset)
+                    else:
+                        target = format(pc + 2 + offset, '04X')
+                    # Annotate a normal instruction
+                    self.put(last_sync_samplenum, last_cycle_samplenum, self.out_ann, [Ann.INSTR, [pcs + ': ' + fmt.format(mnemonic, op1, op2, target)]])
 
                 # Look for control flow changes and update the PC
                 if opcode == 0x40 or opcode == 0x00 or opcode == 0x6c or opcode == 0x7c or write_count == 3:
