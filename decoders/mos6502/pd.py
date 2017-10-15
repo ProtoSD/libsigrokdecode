@@ -119,17 +119,18 @@ class Decoder(srd.Decoder):
         last_sync_cyclenum   = 0
         last_sync_samplenum  = -1
         last_cycle_samplenum = -1
-        opcount     = 0
-        cycle       = Cycle.MEMRD
-        mnemonic    = '???'
-        opcode      = -1
-        op1         = 0
-        op2         = 0
-        write_count = 0
-        pc          = -1
-        next_pc     = 0
-        last_phi2   = None
-        bus_data    = 0
+        opcount              = 0
+        cycle                = Cycle.MEMRD
+        mnemonic             = '???'
+        opcode               = -1
+        op1                  = 0
+        op2                  = 0
+        write_count          = 0
+        pc                   = -1
+        read_accumulator     = 0
+        write_accumulator    = 0
+        last_phi2            = None
+        bus_data             = 0
 
         while True:
             # TODO: Come up with more appropriate self.wait() conditions.
@@ -170,6 +171,22 @@ class Decoder(srd.Decoder):
             # Sync indicates the start of a new instruction
             if pin_sync == 1:
 
+                # For instructions that push the current address to the stack we
+                # can use the stacked address to determine the current PC
+                newpc = -1
+                if opcode == 0x20:
+                    # JSR
+                    newpc = (write_accumulator - 2) & 0xffff
+                elif write_count == 3:
+                    # IRQ/NMI/RST
+                    newpc = (write_accumulator >> 8) & 0xffff
+
+                # Sanity check the current pc prediction has not gone awry
+                if newpc >= 0:
+                    if pc >= 0 and pc != newpc:
+                        print('pc: prediction failed at ' + format(newpc, '04X') + ' old pc was ' + format(pc, '04X'))
+                    pc = newpc
+
                 if (last_sync_samplenum > 0):
                     pcs = '????' if pc < 0 else format(pc, '04X')
                     if write_count == 3 and opcode != 0:
@@ -190,14 +207,14 @@ class Decoder(srd.Decoder):
 
                 # Look for control flow changes and update the PC
                 if opcode == 0x40 or opcode == 0x00 or opcode == 0x6c or opcode == 0x7c or write_count == 3:
-                    # RTI, BRK, INTR, JMP (ind), JMP (ind, X)
-                    pc = (next_pc >> 8) & 0xffff
+                    # RTI, BRK, INTR, JMP (ind), JMP (ind, X), IRQ/NMI/RST
+                    pc = (read_accumulator >> 8) & 0xffff
                 elif opcode == 0x20 or opcode == 0x4c:
                     # JSR abs, JMP abs
                     pc = op2 << 8 | op1
                 elif opcode == 0x60:
                     # RTS
-                    pc = (next_pc + 1) & 0xffff
+                    pc = (read_accumulator + 1) & 0xffff
                 elif pc < 0:
                     # PC value is not known yet, everything below this point is relative
                     pc = -1
@@ -226,11 +243,13 @@ class Decoder(srd.Decoder):
                 fmt      = addr_mode_len_map[mode][1]
                 opcount  = len - 1
                 write_count = 0
-                next_pc = 0
+                read_accumulator = 0
+                write_accumulator = 0
 
             elif pin_rnw == 0:
                 cycle = Cycle.MEMWR
                 write_count += 1
+                write_accumulator = (write_accumulator << 8) | bus_data
 
             elif cycle == Cycle.FETCH and opcount > 0:
                 cycle = Cycle.OP1
@@ -252,7 +271,7 @@ class Decoder(srd.Decoder):
                     op2 = bus_data
                 else:
                     cycle = Cycle.MEMRD
-                    next_pc = (next_pc >> 8) | (bus_data << 16)
+                    read_accumulator = (read_accumulator >> 8) | (bus_data << 16)
 
             # Increment the cycle number (used only to detect taken branches)
             cyclenum += 1
