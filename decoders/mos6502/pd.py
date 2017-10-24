@@ -175,12 +175,12 @@ class Decoder(srd.Decoder):
                 # For instructions that push the current address to the stack we
                 # can use the stacked address to determine the current PC
                 newpc = -1
-                if opcode == 0x20:
-                    # JSR
-                    newpc = (write_accumulator - 2) & 0xffff
-                elif write_count == 3:
+                if write_count == 3:
                     # IRQ/NMI/RST
                     newpc = (write_accumulator >> 8) & 0xffff
+                elif opcode == 0x20:
+                    # JSR
+                    newpc = (write_accumulator - 2) & 0xffff
 
                 # Sanity check the current pc prediction has not gone awry
                 if newpc >= 0:
