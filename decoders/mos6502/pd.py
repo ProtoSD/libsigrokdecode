@@ -19,14 +19,14 @@
 
 import sigrokdecode as srd
 from functools import reduce
-from .tables import addr_mode_len_map, instr_table, AddrMode
+from .tables import addr_mode_len_map, instr_table, AddrMode, em
 import string
 
 class Ann:
-    DATA, FETCH, OP1, OP2, MEMRD, MEMWR, INSTR, INTR, ADDR = range(9)
+    DATA, FETCH, OP1, OP2, MEMRD, MEMWR, INSTR, INTR, STATE, ADDR = range(10)
 
 class Row:
-    DATABUS, INSTRUCTIONS, ADDRESS = range(3)
+    DATABUS, INSTRUCTIONS, STATE, ADDRESS = range(4)
 
 class Pin:
     D0, D7 = 0, 7
@@ -91,6 +91,12 @@ class Decoder(srd.Decoder):
 #        'desc': 'Address bus line %d' % i
 #        } for i in range(16)
     )
+    options = (
+        {'id': 'state',
+         'desc': 'Decode register state',
+         'default': 'no',
+         'values': ('no', 'yes')},
+    )
     annotations = (
         ('data',   'Data bus'),
         ('fetch',  'Fetch opcode'),
@@ -99,12 +105,14 @@ class Decoder(srd.Decoder):
         ('memrd',  'Memory Read'),
         ('memwr',  'Memory Write'),
         ('instr',  'Instruction'),
-        ('intr',  'Interrupt'),
+        ('intr',   'Interrupt'),
+        ('state',  'State'),
     )
     annotation_rows = (
         ('databus', 'Data bus', (Ann.DATA,)),
         ('cycle', 'Cycle', (Ann.FETCH, Ann.OP1, Ann.OP2, Ann.MEMRD, Ann.MEMWR)),
         ('instructions', 'Instructions', (Ann.INSTR, Ann.INTR)),
+        ('state', 'State', (Ann.STATE,)),
 #        ('addrbus', 'Address bus', (Ann.ADDR,)),
     )
 
@@ -132,6 +140,8 @@ class Decoder(srd.Decoder):
         last_phi2            = None
         bus_data             = 0
         fmt                  = 'xxx'
+        do_emulate           = self.options['state'] == 'yes'
+        emulate              = 0
 
         while True:
             # TODO: Come up with more appropriate self.wait() conditions.
@@ -192,6 +202,11 @@ class Decoder(srd.Decoder):
                 if write_count == 3 and opcode != 0:
                     # Annotate an interrupt
                     self.put(last_sync_samplenum, last_cycle_samplenum, self.out_ann, [Ann.INTR, [pcs + ': ' + 'INTERRUPT !!']])
+
+                    # Emulate the instruction
+                    if do_emulate:
+                        em.interrupt()
+                        self.put(last_sync_samplenum, last_cycle_samplenum, self.out_ann, [Ann.STATE, [em.get_state()]])
                 else:
                     # Calculate branch target using op1 for normal branches and op2 for BBR/BBS
                     offset = signed_byte(op2 if (opcode & 0x0f == 0x0f) else op1)
@@ -204,6 +219,12 @@ class Decoder(srd.Decoder):
                         target = format(pc + 2 + offset, '04X')
                     # Annotate a normal instruction
                     self.put(last_sync_samplenum, last_cycle_samplenum, self.out_ann, [Ann.INSTR, [pcs + ': ' + fmt.format(mnemonic, op1, op2, target)]])
+
+                    # Emulate the instruction
+                    if do_emulate:
+                        if emulate:
+                            emulate(operand)
+                        self.put(last_sync_samplenum, last_cycle_samplenum, self.out_ann, [Ann.STATE, [em.get_state()]])
 
                 # Look for control flow changes and update the PC
                 if opcode == 0x40 or opcode == 0x00 or opcode == 0x6c or opcode == 0x7c or write_count == 3:
@@ -239,10 +260,12 @@ class Decoder(srd.Decoder):
                 instr    = instr_table[opcode]
                 mnemonic = instr[0]
                 mode     = instr[1]
+                emulate  = instr[2]
                 len      = addr_mode_len_map[mode][0]
                 fmt      = addr_mode_len_map[mode][1]
                 opcount  = len - 1
                 write_count = 0
+                operand = -1
                 read_accumulator = 0
                 write_accumulator = 0
 
@@ -254,7 +277,8 @@ class Decoder(srd.Decoder):
             elif cycle == Cycle.FETCH and opcount > 0:
                 cycle = Cycle.OP1
                 opcount -= 1
-                op1 = bus_data;
+                op1 = bus_data
+                operand = bus_data
 
             elif cycle == Cycle.OP1 and opcount > 0:
                 if (opcode == 0x20): # JSR is <opcode> <op1> <dummp stack rd> <stack wr> <stack wr> <op2>
@@ -271,6 +295,7 @@ class Decoder(srd.Decoder):
                     op2 = bus_data
                 else:
                     cycle = Cycle.MEMRD
+                    operand = bus_data
                     read_accumulator = (read_accumulator >> 8) | (bus_data << 16)
 
             # Increment the cycle number (used only to detect taken branches)
