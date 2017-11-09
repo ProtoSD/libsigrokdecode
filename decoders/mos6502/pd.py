@@ -142,6 +142,7 @@ class Decoder(srd.Decoder):
         fmt                  = 'xxx'
         do_emulate           = self.options['state'] == 'yes'
         emulate              = 0
+        write                = 0
 
         while True:
             # TODO: Come up with more appropriate self.wait() conditions.
@@ -205,7 +206,7 @@ class Decoder(srd.Decoder):
 
                     # Emulate the instruction
                     if do_emulate:
-                        em.interrupt()
+                        em.interrupt(write_accumulator & 0xff)
                         self.put(last_sync_samplenum, last_cycle_samplenum, self.out_ann, [Ann.STATE, [em.get_state()]])
                 else:
                     # Calculate branch target using op1 for normal branches and op2 for BBR/BBS
@@ -226,6 +227,9 @@ class Decoder(srd.Decoder):
                             # special case RTI, operand (flags) is the first read cycle of three
                             if (opcode == 0x40):
                                 operand = read_accumulator & 0xff
+                            # special case instructions where the operand is being written (STA/STX/STY/PHP/PHA/PHX/PHY/BRK)
+                            if (write):
+                                operand = write_accumulator & 0xff
                             emulate(operand)
                         self.put(last_sync_samplenum, last_cycle_samplenum, self.out_ann, [Ann.STATE, [em.get_state()]])
 
@@ -263,7 +267,8 @@ class Decoder(srd.Decoder):
                 instr    = instr_table[opcode]
                 mnemonic = instr[0]
                 mode     = instr[1]
-                emulate  = instr[2]
+                write    = instr[2]
+                emulate  = instr[3]
                 len      = addr_mode_len_map[mode][0]
                 fmt      = addr_mode_len_map[mode][1]
                 opcount  = len - 1
