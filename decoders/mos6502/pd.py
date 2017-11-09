@@ -142,7 +142,7 @@ class Decoder(srd.Decoder):
         fmt                  = 'xxx'
         do_emulate           = self.options['state'] == 'yes'
         emulate              = 0
-        write                = 0
+        optype               = 0
 
         while True:
             # TODO: Come up with more appropriate self.wait() conditions.
@@ -228,11 +228,14 @@ class Decoder(srd.Decoder):
                     if do_emulate:
                         if emulate:
                             # special case RTI, operand (flags) is the first read cycle of three
-                            if (opcode == 0x40):
+                            if opcode == 0x40:
                                 operand = read_accumulator & 0xff
                             # special case instructions where the operand is being written (STA/STX/STY/PHP/PHA/PHX/PHY/BRK)
-                            if (write):
+                            if optype == 1:
                                 operand = write_accumulator & 0xff
+                            # special case branch instructions, operand is true if branch taken
+                            if optype == 2:
+                                operand = (cyclenum - last_sync_cyclenum != 2)
                             emulate(operand)
                         self.put(last_sync_samplenum, last_cycle_samplenum, self.out_ann, [Ann.STATE, [em.get_state()]])
 
@@ -270,7 +273,7 @@ class Decoder(srd.Decoder):
                 instr    = instr_table[opcode]
                 mnemonic = instr[0]
                 mode     = instr[1]
-                write    = instr[2]
+                optype   = instr[2]
                 emulate  = instr[3]
                 len      = addr_mode_len_map[mode][0]
                 fmt      = addr_mode_len_map[mode][1]
@@ -292,7 +295,7 @@ class Decoder(srd.Decoder):
                 operand = bus_data
 
             elif cycle == Cycle.OP1 and opcount > 0:
-                if (opcode == 0x20): # JSR is <opcode> <op1> <dummp stack rd> <stack wr> <stack wr> <op2>
+                if opcode == 0x20: # JSR is <opcode> <op1> <dummp stack rd> <stack wr> <stack wr> <op2>
                     cycle = Cycle.MEMRD
                 else:
                     cycle = Cycle.OP2
@@ -300,7 +303,7 @@ class Decoder(srd.Decoder):
                     op2 = bus_data
 
             else:
-                if (opcode == 0x20): # JSR, see above
+                if opcode == 0x20: # JSR, see above
                     cycle = Cycle.OP2
                     opcount -= 1
                     op2 = bus_data

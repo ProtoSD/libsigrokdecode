@@ -168,6 +168,62 @@ class Emulator:
         tmp = (operand << 1) & 255
         self.set_NZ(tmp)
 
+    def op_BCC(self, branch_taken):
+        if self.C >= 0:
+            if self.C == branch_taken:
+                self.failflag = 1
+        else:
+            self.C = 1 - branch_taken
+
+    def op_BCS(self, branch_taken):
+        if self.C >= 0:
+            if self.C != branch_taken:
+                self.failflag = 1
+        else:
+            self.C = branch_taken
+
+    def op_BNE(self, branch_taken):
+        if self.Z >= 0:
+            if self.Z == branch_taken:
+                self.failflag = 1
+        else:
+            self.Z = 1 - branch_taken
+
+    def op_BEQ(self, branch_taken):
+        if self.Z >= 0:
+            if self.Z != branch_taken:
+                self.failflag = 1
+        else:
+            self.Z = branch_taken
+
+    def op_BPL(self, branch_taken):
+        if self.N >= 0:
+            if self.N == branch_taken:
+                self.failflag = 1
+        else:
+            self.N = 1 - branch_taken
+
+    def op_BMI(self, branch_taken):
+        if self.N >= 0:
+            if self.N != branch_taken:
+                self.failflag = 1
+        else:
+            self.N = branch_taken
+
+    def op_BVC(self, branch_taken):
+        if self.V >= 0:
+            if self.V == branch_taken:
+                self.failflag = 1
+        else:
+            self.V = 1 - branch_taken
+
+    def op_BVS(self, branch_taken):
+        if self.V >= 0:
+            if self.V != branch_taken:
+                self.failflag = 1
+        else:
+            self.V = branch_taken
+
     def op_BRK(self, operand):
         self.interrupt(operand)
 
@@ -501,7 +557,7 @@ instr_table = {
     0x0D: ( 'ORA',  AddrMode.ABS   , 0, em.op_ORA),
     0x0E: ( 'ASL',  AddrMode.ABS   , 0, em.op_ASL),
     0x0F: ( 'BBR0', AddrMode.ZPR   , 0, 0),
-    0x10: ( 'BPL',  AddrMode.BRA   , 0, 0),
+    0x10: ( 'BPL',  AddrMode.BRA   , 2, em.op_BPL),
     0x11: ( 'ORA',  AddrMode.INDY  , 0, em.op_ORA),
     0x12: ( 'ORA',  AddrMode.IND   , 0, em.op_ORA),
     0x13: ( 'NOP',  AddrMode.IMP   , 0, 0),
@@ -533,7 +589,7 @@ instr_table = {
     0x2D: ( 'AND',  AddrMode.ABS   , 0, em.op_AND),
     0x2E: ( 'ROL',  AddrMode.ABS   , 0, em.op_ROL),
     0x2F: ( 'BBR2', AddrMode.ZPR   , 0, 0),
-    0x30: ( 'BMI',  AddrMode.BRA   , 0, 0),
+    0x30: ( 'BMI',  AddrMode.BRA   , 2, em.op_BMI),
     0x31: ( 'AND',  AddrMode.INDY  , 0, em.op_AND),
     0x32: ( 'AND',  AddrMode.IND   , 0, em.op_AND),
     0x33: ( 'NOP',  AddrMode.IMP   , 0, 0),
@@ -565,7 +621,7 @@ instr_table = {
     0x4D: ( 'EOR',  AddrMode.ABS   , 0, em.op_EOR),
     0x4E: ( 'LSR',  AddrMode.ABS   , 0, em.op_LSR),
     0x4F: ( 'BBR4', AddrMode.ZPR   , 0, 0),
-    0x50: ( 'BVC',  AddrMode.BRA   , 0, 0),
+    0x50: ( 'BVC',  AddrMode.BRA   , 2, em.op_BVC),
     0x51: ( 'EOR',  AddrMode.INDY  , 0, em.op_EOR),
     0x52: ( 'EOR',  AddrMode.IND   , 0, em.op_EOR),
     0x53: ( 'NOP',  AddrMode.IMP   , 0, 0),
@@ -597,7 +653,7 @@ instr_table = {
     0x6D: ( 'ADC',  AddrMode.ABS   , 0, em.op_ADC),
     0x6E: ( 'ROR',  AddrMode.ABS   , 0, em.op_ROR),
     0x6F: ( 'BBR6', AddrMode.ZPR   , 0, 0),
-    0x70: ( 'BVS',  AddrMode.BRA   , 0, 0),
+    0x70: ( 'BVS',  AddrMode.BRA   , 2, em.op_BVS),
     0x71: ( 'ADC',  AddrMode.INDY  , 0, em.op_ADC),
     0x72: ( 'ADC',  AddrMode.IND   , 0, em.op_ADC),
     0x73: ( 'NOP',  AddrMode.IMP   , 0, 0),
@@ -629,7 +685,7 @@ instr_table = {
     0x8D: ( 'STA',  AddrMode.ABS   , 1, em.op_STA),
     0x8E: ( 'STX',  AddrMode.ABS   , 1, em.op_STX),
     0x8F: ( 'BBS0', AddrMode.ZPR   , 0, 0),
-    0x90: ( 'BCC',  AddrMode.BRA   , 0, 0),
+    0x90: ( 'BCC',  AddrMode.BRA   , 2, em.op_BCC),
     0x91: ( 'STA',  AddrMode.INDY  , 1, em.op_STA),
     0x92: ( 'STA',  AddrMode.IND   , 1, em.op_STA),
     0x93: ( 'NOP',  AddrMode.IMP   , 0, 0),
@@ -661,7 +717,7 @@ instr_table = {
     0xAD: ( 'LDA',  AddrMode.ABS   , 0, em.op_LDA),
     0xAE: ( 'LDX',  AddrMode.ABS   , 0, em.op_LDX),
     0xAF: ( 'BBS2', AddrMode.ZPR   , 0, 0),
-    0xB0: ( 'BCS',  AddrMode.BRA   , 0, 0),
+    0xB0: ( 'BCS',  AddrMode.BRA   , 2, em.op_BCS),
     0xB1: ( 'LDA',  AddrMode.INDY  , 0, em.op_LDA),
     0xB2: ( 'LDA',  AddrMode.IND   , 0, em.op_LDA),
     0xB3: ( 'NOP',  AddrMode.IMP   , 0, 0),
@@ -693,7 +749,7 @@ instr_table = {
     0xCD: ( 'CMP',  AddrMode.ABS   , 0, em.op_CMP),
     0xCE: ( 'DEC',  AddrMode.ABS   , 0, em.op_DEC),
     0xCF: ( 'BBS4', AddrMode.ZPR   , 0, 0),
-    0xD0: ( 'BNE',  AddrMode.BRA   , 0, 0),
+    0xD0: ( 'BNE',  AddrMode.BRA   , 2, em.op_BNE),
     0xD1: ( 'CMP',  AddrMode.INDY  , 0, em.op_CMP),
     0xD2: ( 'CMP',  AddrMode.IND   , 0, em.op_CMP),
     0xD3: ( 'NOP',  AddrMode.IMP   , 0, 0),
@@ -725,7 +781,7 @@ instr_table = {
     0xED: ( 'SBC',  AddrMode.ABS   , 0, em.op_SBC),
     0xEE: ( 'INC',  AddrMode.ABS   , 0, em.op_INC),
     0xEF: ( 'BBS6', AddrMode.ZPR   , 0, 0),
-    0xF0: ( 'BEQ',  AddrMode.BRA   , 0, 0),
+    0xF0: ( 'BEQ',  AddrMode.BRA   , 2, em.op_BEQ),
     0xF1: ( 'SBC',  AddrMode.INDY  , 0, em.op_SBC),
     0xF2: ( 'SBC',  AddrMode.IND   , 0, em.op_SBC),
     0xF3: ( 'NOP',  AddrMode.IMP   , 0, 0),
