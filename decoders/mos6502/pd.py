@@ -159,15 +159,18 @@ class Decoder(srd.Decoder):
                     pin_rdy   = pins[Pin.RDY]
                     pin_sync  = pins[Pin.SYNC]
                     pin_rnw   = pins[Pin.RNW]
+                    pin_data  = pins[Pin.D0:Pin.D7+1]
                     continue
             else:
                 # If Phi2 is not present, use the pins directly
                 pin_rdy   = pins[Pin.RDY]
                 pin_sync  = pins[Pin.SYNC]
                 pin_rnw   = pins[Pin.RNW]
+                pin_data  = pins[Pin.D0:Pin.D7+1]
 
-            # Sample data just after the falling edge, as there should be reasonable hold time
-            pin_data  = pins[Pin.D0:Pin.D7+1]
+            # Resample read data just after the falling edge, as there should be reasonable hold time
+            if pin_rnw == 1:
+                pin_data  = pins[Pin.D0:Pin.D7+1]
 
             # At this point, either phi2 is not connected, or last_phi2 = 1 and phi2 = 0 (i.e. falling edge)
             last_phi2 = 0
