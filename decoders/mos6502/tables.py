@@ -316,7 +316,7 @@ class Emulator:
     def op_ROLA(self, operand):
         # TODO: Can we further limit the uncertainty
         if self.A >= 0 and self.C >= 0:
-            tmp = self.A << 1 + self.C
+            tmp = (self.A << 1) + self.C
             self.C = (tmp >> 8) & 1
             self.A = tmp & 255
             self.set_NZ(self.A)
@@ -327,7 +327,7 @@ class Emulator:
     def op_ROL(self, operand):
         # TODO: Can we further limit the uncertainty
         if self.C >= 0:
-            tmp = operand << 1 + self.C
+            tmp = (operand << 1) + self.C
             self.C = (tmp >> 8) & 1
             tmp = tmp & 255
             self.set_NZ(tmp)
@@ -337,7 +337,7 @@ class Emulator:
     def op_RORA(self, operand):
         # TODO: Can we further limit the uncertainty
         if self.A >= 0 and self.C >= 0:
-            tmp = self.A >> 1 + self.C << 7
+            tmp = (self.A >> 1) + (self.C << 7)
             self.C = self.A & 1
             self.A = tmp
             self.set_NZ(self.A)
@@ -348,7 +348,7 @@ class Emulator:
     def op_ROR(self, operand):
         # TODO: Can we further limit the uncertainty
         if self.C >= 0:
-            tmp = operand >> 1 + self.C << 7
+            tmp = (operand >> 1) + (self.C << 7)
             self.C = operand & 1
             self.set_NZ(tmp)
         else:
