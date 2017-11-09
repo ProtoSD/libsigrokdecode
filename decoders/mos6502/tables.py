@@ -173,7 +173,7 @@ class Emulator:
 
     def op_BIT_IMM(self, operand):
         if self.A >= 0:
-            self.Z = int(self.A & operand > 0)
+            self.Z = int(self.A & operand == 0)
         else:
             self.Z = -1
 
@@ -181,7 +181,7 @@ class Emulator:
         self.N = (operand >> 7) & 1
         self.V = (operand >> 6) & 1
         if self.A >= 0:
-            self.Z = int(self.A & operand > 0)
+            self.Z = int(self.A & operand == 0)
         else:
             self.Z = -1
 
@@ -453,7 +453,7 @@ class Emulator:
 
     def op_TSB_TRB(self, operand):
         if self.A >= 0:
-            self.Z = int(self.A & operand)
+            self.Z = int(self.A & operand == 0)
         else:
             self.Z = -1
 
