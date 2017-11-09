@@ -21,7 +21,6 @@
 # Emulation TODO list
 # - Seperate 6502/65C02 modes
 # - Decimal mode
-# - Overflow flag in ADC/SBC
 # - Reduce uncertainty where possible (e.g. where just one of A and C is undefined)
 
 '''
@@ -96,6 +95,12 @@ class Emulator:
         self.Z = -1
         self.C = -1
 
+    def set_NVZC_unknown(self):
+        self.N = -1
+        self.V = -1
+        self.Z = -1
+        self.C = -1
+
     def interrupt(self, operand):
         if self.S >= 0:
             self.S = (self.S - 3) & 255
@@ -138,15 +143,15 @@ class Emulator:
 
     def op_ADC(self, operand):
         # TODO: Decimal mode
-        # TODO: Overflow flag
         if self.A >= 0 and self.C >= 0:
             tmp = self.A + operand + self.C
             self.C = (tmp >> 8) & 1
+            self.V = int((((self.A ^ operand) & 0x80) == 0) and (((self.A ^ tmp) & 0x80) != 0))
             self.A = tmp & 255
             self.set_NZ(self.A)
         else:
             self.A = -1
-            self.set_NZC_unknown()
+            self.set_NVZC_unknown()
 
     def op_AND(self, operand):
         if self.A >= 0:
@@ -456,15 +461,15 @@ class Emulator:
 
     def op_SBC(self, operand):
         # TODO: Decimal mode
-        # TODO: Overflow flag
         if self.A >= 0 and self.C >= 0:
             tmp = self.A - operand - (1 - self.C)
             self.C = 1 - ((tmp >> 8) & 1)
+            self.V = int((((self.A ^ operand) & 0x80) != 0) and (((self.A ^ tmp) & 0x80) != 0))
             self.A = tmp & 255
             self.set_NZ(self.A)
         else:
             self.A = -1
-            self.set_NZC_unknown()
+            self.set_NVZC_unknown()
 
     def op_SEC(self, operand):
         self.C = 1
