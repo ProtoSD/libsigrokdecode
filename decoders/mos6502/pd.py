@@ -223,6 +223,9 @@ class Decoder(srd.Decoder):
                     # Emulate the instruction
                     if do_emulate:
                         if emulate:
+                            # special case RTI, operand (flags) is the first read cycle of three
+                            if (opcode == 0x40):
+                                operand = read_accumulator & 0xff
                             emulate(operand)
                         self.put(last_sync_samplenum, last_cycle_samplenum, self.out_ann, [Ann.STATE, [em.get_state()]])
 

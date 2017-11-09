@@ -23,7 +23,6 @@
 # - Decimal mode
 # - Overflow flag in ADC/SBC
 # - Reduce uncertainty where possible (e.g. where just one of A and C is undefined)
-# - implement RTI
 # - check push/pull behaviour
 # - sanity checking (e.g. on STA, STX, STY, PHA, PHX, PHY, PHP, etc)
 
@@ -359,15 +358,9 @@ class Emulator:
             self.S = (self.S + 2) & 255
 
     def op_RTI(self, operand):
+        self.op_PLP(operand)
         if self.S >= 0:
-            self.S = (self.S + 3) & 255
-        # TODO: update flags
-        self.N = -1
-        self.V = -1
-        self.D = -1
-        self.I = -1
-        self.Z = -1
-        self.C = -1
+            self.S = (self.S + 2) & 255
         
     def op_SBC(self, operand):
         # TODO: Decimal mode
